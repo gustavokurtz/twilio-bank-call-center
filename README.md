@@ -63,6 +63,7 @@ A ideia central é mostrar como a API de voz da Twilio pode ser integrada a uma 
 
 4.  **Teste:**
     * Acesse o endpoint configurado para disparar a chamada (geralmente um endpoint GET simples no navegador).
+    * Suba um server ngrok 8080 e coloque como webhook no Twilio, para a voz
     * Você deverá receber uma ligação no número configurado em `TO_PHONE_NUMBER`.
     * Siga as instruções de voz.
 
