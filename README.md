@@ -48,7 +48,7 @@ A ideia central é mostrar como a API de voz da Twilio pode ser integrada a uma 
 
 1.  **Clone o repositório:**
     ```bash
-    git clone [https://github.com/gustavokurtz/twilio-bank-call-center.git](https://github.com/gustavokurtz/twilio-bank-call-center.git)
+    git clone https://github.com/gustavokurtz/twilio-bank-call-center.git
     cd twilio-bank-call-center
     ```
 
