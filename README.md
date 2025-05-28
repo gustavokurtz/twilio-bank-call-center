@@ -71,4 +71,3 @@ A ideia central é mostrar como a API de voz da Twilio pode ser integrada a uma 
 * Este projeto foi desenvolvido utilizando uma conta gratuita da Twilio. Por isso, no início de cada chamada, uma mensagem padrão da Twilio ("This is a trial account...") pode ser reproduzida antes do fluxo da aplicação.
 
 ---
-Sinta-se à vontade para adicionar mais seções como "Como Contribuir", "Licença", ou detalhar mais a configuração se necessário.
