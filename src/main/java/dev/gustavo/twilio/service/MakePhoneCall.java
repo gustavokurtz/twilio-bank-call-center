@@ -21,7 +21,7 @@ public class MakePhoneCall {
     // Credenciais
     private static final String ACCOUNT_SID = System.getenv("TWILIO_ACCOUNT_SID");
     private static final String AUTH_TOKEN = System.getenv("TWILIO_AUTH_TOKEN");
-    private static final String BASE_URL = "https://c5f6-2804-1cd8-ce23-5e0-7839-6cf1-5a18-989.ngrok-free.app";
+    private static final String BASE_URL = "https://c5f6-2804-1cd8-ce23-5e0-7839-6cf1-5a18-989.ngrok-free.app"; // Mantenha seu URL do ngrok
 
     public String createCall() {
         try {
@@ -31,13 +31,13 @@ public class MakePhoneCall {
 
             Twilio.init(ACCOUNT_SID, AUTH_TOKEN);
 
-            String from = "+17275948202";
-            String to = "+5532999165667";
+            String from = "+17275948202"; // Seu número Twilio
+            String to = "+5532999165667";   // Número de destino
 
             Call call = Call.creator(
                     new PhoneNumber(to),
                     new PhoneNumber(from),
-                    URI.create(BASE_URL + "/voice")
+                    URI.create(BASE_URL + "/voice") // Endpoint inicial que retorna o menu
             ).setMethod(HttpMethod.POST).create();
 
             logger.info("Chamada criada com sucesso. Call SID: {}", call.getSid());
@@ -52,32 +52,28 @@ public class MakePhoneCall {
     // Primeira interação - apresenta o menu
     public String createVoiceMenu() {
         try {
-            // Criar o elemento Say com a pergunta
-            Say menuSay = new Say.Builder("Olá, tudo bem? Digite 1 se quer ouvir Gustavo, ou 2 se quer ouvir Leticia")
-                    .voice(Say.Voice.POLLY_VITORIA)  // Voz feminina brasileira
+            Say menuSay = new Say.Builder("Olá, tudo bem? Digite 1 se Falar com o suporte, ou 2 se quer consultar seu saldo.")
+                    .voice(Say.Voice.POLLY_VITORIA)
                     .language(Say.Language.PT_BR)
                     .build();
 
-            // Criar o Gather para capturar a escolha
             Gather gather = new Gather.Builder()
-                    .action(BASE_URL + "/voice/escolha")
+                    .action(BASE_URL + "/voice/escolha") // Endpoint que processará a escolha 1 ou 2
                     .method(HttpMethod.POST)
                     .timeout(10)
-                    .numDigits(1)
+                    .numDigits(1) // Espera 1 dígito para a escolha do menu
                     .inputs(Gather.Input.DTMF)
                     .say(menuSay)
                     .build();
 
-            // Mensagem de fallback se não escolher nada
             Say fallbackSay = new Say.Builder("Não recebi sua escolha. Tchau!")
                     .voice(Say.Voice.POLLY_VITORIA)
                     .language(Say.Language.PT_BR)
                     .build();
 
-            // Criar a resposta TwiML
             VoiceResponse voiceResponse = new VoiceResponse.Builder()
                     .gather(gather)
-                    .say(fallbackSay)
+                    .say(fallbackSay) // Será dito se o Gather do menu expirar
                     .build();
 
             String xml = voiceResponse.toXml();
@@ -94,35 +90,60 @@ public class MakePhoneCall {
     public String processarEscolha(String digits) {
         try {
             logger.info("Usuário escolheu: {}", digits);
+            VoiceResponse voiceResponse; // A resposta TwiML será construída aqui
 
-            Say responseSay;
+            switch (digits) {
+                case "1":
+                    Say gustavoSay = new Say.Builder("Oi! Aqui é o Gustavo! Suporte do Banco !")
+                            .voice(Say.Voice.POLLY_RICARDO)
+                            .language(Say.Language.PT_BR)
+                            .build();
+                    // Para a opção 1, apenas falamos a mensagem.
+                    voiceResponse = new VoiceResponse.Builder().say(gustavoSay).build();
+                    break;
 
-            if ("1".equals(digits)) {
-                // Usuário escolheu opção 1 - Gustavo (voz masculina)
-                responseSay = new Say.Builder("Oi! Aqui é o Gustavo! Como você está? Espero que esteja tendo um ótimo dia!")
-                        .voice(Say.Voice.POLLY_RICARDO)  // Voz masculina brasileira
-                        .language(Say.Language.PT_BR)
-                        .build();
+                case "2":
+                    // Usuário escolheu opção 2 - Solicitar CPF
+                    Say cpfPromptSay = new Say.Builder("Olá! Digite seu CPF para consultar seu saldo!")
+                            .voice(Say.Voice.POLLY_CAMILA)
+                            .language(Say.Language.PT_BR)
+                            .build();
 
-            } else if ("2".equals(digits)) {
-                // Usuário escolheu opção 2 - Leticia (voz feminina)
-                responseSay = new Say.Builder("Olá! Eu sou a Leticia! É um prazer falar com você. Como posso ajudar hoje?")
-                        .voice(Say.Voice.POLLY_CAMILA)  // Voz feminina brasileira diferente
-                        .language(Say.Language.PT_BR)
-                        .build();
+                    // Criar o Gather para capturar os 11 dígitos do CPF
+                    Gather gatherCPF = new Gather.Builder()
+                            .action(BASE_URL + "/cpf") // Novo endpoint para processar o CPF
+                            .method(HttpMethod.POST)
+                            .timeout(30) // Aumentei o timeout para dar tempo de digitar o CPF
+                            .numDigits(11) // Espera 11 dígitos
+                            .inputs(Gather.Input.DTMF)
+                            .say(cpfPromptSay) // Mensagem antes de coletar o CPF
+                            .build();
 
-            } else {
-                // Opção inválida
-                responseSay = new Say.Builder("Opção inválida. Por favor, digite 1 para Gustavo ou 2 para Leticia. Tchau!")
-                        .voice(Say.Voice.POLLY_VITORIA)
-                        .language(Say.Language.PT_BR)
-                        .build();
+                    // Mensagem de fallback se o usuário não digitar o CPF a tempo
+                    Say noCpfInputSay = new Say.Builder("Não recebi seu CPF. Tchau!")
+                            .voice(Say.Voice.POLLY_CAMILA)
+                            .language(Say.Language.PT_BR)
+                            .build();
+
+                    // Para a opção 2, a resposta é o Gather para o CPF.
+                    // O noCpfInputSay será dito se o Gather do CPF expirar.
+                    voiceResponse = new VoiceResponse.Builder()
+                            .gather(gatherCPF)
+                            .say(noCpfInputSay)
+                            .build();
+                    break;
+
+                default:
+                    Say invalidOptionSay = new Say.Builder(
+                            "Opção inválida. Por favor, digite 1 para Falar com o suporte ou 2 para consultar seu saldo. Tchau!"
+                    )
+                            .voice(Say.Voice.POLLY_VITORIA)
+                            .language(Say.Language.PT_BR)
+                            .build();
+                    // Para opção inválida, apenas falamos a mensagem.
+                    voiceResponse = new VoiceResponse.Builder().say(invalidOptionSay).build();
+                    break;
             }
-
-            // Criar resposta TwiML com a mensagem escolhida
-            VoiceResponse voiceResponse = new VoiceResponse.Builder()
-                    .say(responseSay)
-                    .build();
 
             String xml = voiceResponse.toXml();
             logger.info("Resposta TwiML gerada para escolha {}: {}", digits, xml);
