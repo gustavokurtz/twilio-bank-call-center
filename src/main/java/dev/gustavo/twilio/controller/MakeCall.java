@@ -2,7 +2,9 @@ package dev.gustavo.twilio.controller;
 
 import com.twilio.twiml.VoiceResponse;
 import com.twilio.twiml.voice.Say;
+import dev.gustavo.twilio.model.Users; // Sua classe Users
 import dev.gustavo.twilio.service.MakePhoneCall;
+import jakarta.annotation.PostConstruct; // Para inicializar após a construção
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -25,35 +27,27 @@ public class MakeCall {
     @Autowired
     private MakePhoneCall service;
 
-    // Classe interna para dados mockados da conta
-    private static class DadosContaMock {
-        String nomeTitular;
-        String saldo; // Usaremos string para facilitar a leitura na mensagem de voz
+    // Mapa para armazenar os usuários. A chave é o CPF (String).
+    private Map<String, Users> activeUsers;
 
-        public DadosContaMock(String nomeTitular, String saldo) {
-            this.nomeTitular = nomeTitular;
-            this.saldo = saldo;
-        }
+    // Este método será chamado automaticamente após o controller ser construído
+    // e as dependências injetadas. Ideal para inicializar seus dados.
+    @PostConstruct
+    public void initializeUsers() {
+        activeUsers = new HashMap<>();
+
+        // Instancie e adicione seus objetos Users ao mapa
+        // e getters como getCpf(), getNome() (ou getNomeTitular()), getSaldo().
+        activeUsers.put("11122233344", new Users("11122233344", "João Silva", "quinhentos reais"));
+        activeUsers.put("55566677788", new Users("55566677788", "Maria Oliveira", "mil duzentos e cinquenta reais e setenta e cinco centavos"));
+        activeUsers.put("00000000000", new Users("00000000000", "Gustavo Exemplo", "dez mil reais e cinquenta centavos"));
+
     }
-
-    // Mock de banco de dados com algumas contas
-    private static final Map<String, DadosContaMock> contasMock = new HashMap<>();
-
-    static {
-        // CPF 1 (exemplo)
-        contasMock.put("11122233344", new DadosContaMock("Gustavo Teste", "quinhentos e setenta e cinco reais e trinta centavos"));
-        // CPF 2 (exemplo)
-        contasMock.put("55566677788", new DadosContaMock("Leticia Exemplo", "mil duzentos e cinquenta reais"));
-        // CPF 3 (exemplo)
-        contasMock.put("00000000000", new DadosContaMock("Cliente VIP", "dez mil reais e cinquenta centavos"));
-    }
-
 
     @GetMapping("/test")
     public ResponseEntity<String> test() {
         return ResponseEntity.ok("Servidor funcionando!");
     }
-
 
     @GetMapping("/hello")
     public ResponseEntity<String> createCall() {
@@ -62,13 +56,12 @@ public class MakeCall {
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             logger.error("Erro no controller: ", e);
-            return ResponseEntity.status(500)
-                    .body("Erro interno: " + e.getMessage());
+            return ResponseEntity.status(500).body("Erro interno: " + e.getMessage());
         }
     }
 
     @PostMapping(value = "/voice", produces = MediaType.APPLICATION_XML_VALUE)
-    public String createVoice(){
+    public String createVoice() {
         return service.createVoiceMenu();
     }
 
@@ -76,55 +69,49 @@ public class MakeCall {
     public ResponseEntity<String> processarEscolha(@RequestParam(name = "Digits", required = false) String digits) {
         try {
             logger.info("Recebida escolha do usuário: {}", digits);
-
             if (digits == null || digits.trim().isEmpty()) {
-                // Considera como opção inválida se nenhum dígito for recebido (ex: timeout no primeiro gather)
-                digits = "fallback"; // Um valor que seu service.processarEscolha pode tratar como default/inválido
+                digits = "fallback";
             }
-
             String twimlResponse = service.processarEscolha(digits);
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_XML); // Twilio espera XML
-
-            return ResponseEntity.ok()
-                    .headers(headers)
-                    .body(twimlResponse);
-
-        } catch (Exception e) {
-            logger.error("Erro ao processar escolha: ", e);
-
-            // Resposta de erro em TwiML
-            Say errorSay = new Say.Builder("Desculpe, ocorreu um erro ao processar sua escolha. Tente novamente mais tarde.")
-                    .voice(Say.Voice.POLLY_VITORIA)
-                    .language(Say.Language.PT_BR)
-                    .build();
-            VoiceResponse errorResponse = new VoiceResponse.Builder().say(errorSay).build();
-
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_XML);
-
-            return ResponseEntity.status(500)
-                    .headers(headers)
-                    .body(errorResponse.toXml());
+            return ResponseEntity.ok().headers(headers).body(twimlResponse);
+        } catch (Exception e) {
+            logger.error("Erro ao processar escolha: ", e);
+            Say errorSay = new Say.Builder("Desculpe, ocorreu um erro ao processar sua escolha. Tente novamente mais tarde.")
+                    .voice(Say.Voice.POLLY_VITORIA).language(Say.Language.PT_BR).build();
+            VoiceResponse errorResponse = new VoiceResponse.Builder().say(errorSay).build();
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_XML);
+            return ResponseEntity.status(500).headers(headers).body(errorResponse.toXml());
         }
     }
-
 
     @PostMapping(value = "/cpf", produces = MediaType.APPLICATION_XML_VALUE)
     public String processarCpf(@RequestParam("Digits") String cpfDigits) {
         logger.info("CPF Recebido para consulta: {}", cpfDigits);
 
         String mensagem;
-        Say.Voice voz = Say.Voice.POLLY_CAMILA; // Voz padrão para este fluxo
+        Say.Voice voz = Say.Voice.POLLY_CAMILA;
 
-        if (contasMock.containsKey(cpfDigits)) {
-            DadosContaMock conta = contasMock.get(cpfDigits);
-            mensagem = String.format("Olá %s. Seu saldo atual é de %s.", conta.nomeTitular, conta.saldo);
-            logger.info("CPF {} encontrado. Titular: {}. Saldo: {}", cpfDigits, conta.nomeTitular, conta.saldo);
+        // 1. Validação de formato do CPF
+        if (cpfDigits == null || !cpfDigits.matches("\\d{11}")) {
+            mensagem = "CPF inválido. Por favor, digite os onze números do seu CPF.";
+            logger.warn("Formato de CPF inválido recebido: {}", cpfDigits);
         } else {
-            mensagem = "Desculpe, não encontramos informações para o CPF digitado. Por favor, verifique os números e tente novamente.";
-            logger.warn("CPF {} não encontrado na base mockada.", cpfDigits);
+            // 2. Buscar o usuário no mapa 'activeUsers'
+            Users foundUser = activeUsers.get(cpfDigits);
+
+            if (foundUser != null) {
+                // Usuário encontrado! Use os dados dele.
+                // Supondo que sua classe Users tem getNome() e getSaldo()
+                mensagem = String.format("Olá %s. Seu saldo atual é de %s.", foundUser.getNomeTitular(), foundUser.getSaldo());
+                logger.info("CPF {} encontrado. Usuário: {}. Saldo: {}", cpfDigits, foundUser.getNomeTitular(), foundUser.getSaldo());
+            } else {
+                // Usuário não encontrado no mapa
+                mensagem = "Desculpe, não encontramos informações para o CPF digitado. Por favor, verifique os números e tente novamente.";
+                logger.warn("CPF {} com formato válido, mas não encontrado no mapa de usuários ativos.", cpfDigits);
+            }
         }
 
         Say responseSay = new Say.Builder(mensagem)
@@ -132,7 +119,6 @@ public class MakeCall {
                 .language(Say.Language.PT_BR)
                 .build();
 
-        // Adiciona uma mensagem final e desliga a chamada.
         Say goodbyeSay = new Say.Builder("Obrigado por utilizar nossos serviços. Até logo!")
                 .voice(voz)
                 .language(Say.Language.PT_BR)

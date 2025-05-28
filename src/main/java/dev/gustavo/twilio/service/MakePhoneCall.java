@@ -52,7 +52,7 @@ public class MakePhoneCall {
     // Primeira interação - apresenta o menu
     public String createVoiceMenu() {
         try {
-            Say menuSay = new Say.Builder("Olá, tudo bem? Digite 1 se Falar com o suporte, ou 2 se quer consultar seu saldo.")
+            Say menuSay = new Say.Builder("Olá, tudo bem? Digite 1 se quer Falar com o suporte, ou 2 se quer consultar seu saldo.")
                     .voice(Say.Voice.POLLY_VITORIA)
                     .language(Say.Language.PT_BR)
                     .build();
