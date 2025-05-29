@@ -1,10 +1,8 @@
 package dev.gustavo.twilio.controller;
 
-import com.twilio.twiml.VoiceResponse;
-import com.twilio.twiml.voice.Say;
-import dev.gustavo.twilio.model.Users; // Sua classe Users
-import dev.gustavo.twilio.service.MakePhoneCall;
-import jakarta.annotation.PostConstruct; // Para inicializar após a construção
+import dev.gustavo.twilio.service.setup.MakePhoneCall;
+import dev.gustavo.twilio.service.cpf.CpfService;
+import dev.gustavo.twilio.service.voice.VoiceService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -16,9 +14,6 @@ import org.springframework.web.bind.annotation.RestController;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.HashMap;
-import java.util.Map;
-
 @RestController
 public class MakeCall {
 
@@ -27,32 +22,17 @@ public class MakeCall {
     @Autowired
     private MakePhoneCall service;
 
-    // Mapa para armazenar os usuários. A chave é o CPF (String).
-    private Map<String, Users> activeUsers;
+    @Autowired
+    private CpfService cpfService;
 
-    // Este método será chamado automaticamente após o controller ser construído
-    // e as dependências injetadas. Ideal para inicializar seus dados.
-    @PostConstruct
-    public void initializeUsers() {
-        activeUsers = new HashMap<>();
+    @Autowired
+    private VoiceService voiceService;
 
-        // Instancie e adicione seus objetos Users ao mapa
-        // e getters como getCpf(), getNome() (ou getNomeTitular()), getSaldo().
-        activeUsers.put("11122233344", new Users("11122233344", "João Silva", "quinhentos reais"));
-        activeUsers.put("55566677788", new Users("55566677788", "Maria Oliveira", "mil duzentos e cinquenta reais e setenta e cinco centavos"));
-        activeUsers.put("00000000000", new Users("00000000000", "Gustavo Exemplo", "dez mil reais e cinquenta centavos"));
-
-    }
-
-    @GetMapping("/test")
-    public ResponseEntity<String> test() {
-        return ResponseEntity.ok("Servidor funcionando!");
-    }
 
     @GetMapping("/hello")
-    public ResponseEntity<String> createCall() {
+    public ResponseEntity<String> iniciarChamadaTelefonica() {
         try {
-            String result = service.createCall();
+            String result = service.criarLigacao();
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             logger.error("Erro no controller: ", e);
@@ -61,74 +41,27 @@ public class MakeCall {
     }
 
     @PostMapping(value = "/voice", produces = MediaType.APPLICATION_XML_VALUE)
-    public String createVoice() {
-        return service.createVoiceMenu();
+    public String exibirMenuInicialVoz() {
+        return voiceService.construirMenuPrincipalVoz();
     }
 
     @PostMapping(value = "/voice/escolha", produces = MediaType.APPLICATION_XML_VALUE)
-    public ResponseEntity<String> processarEscolha(@RequestParam(name = "Digits", required = false) String digits) {
+    public ResponseEntity<String> processarOpcaoMenuPrincipal(@RequestParam(name = "Digits", required = false) String digits) {
         try {
-            logger.info("Recebida escolha do usuário: {}", digits);
-            if (digits == null || digits.trim().isEmpty()) {
-                digits = "fallback";
-            }
-            String twimlResponse = service.processarEscolha(digits);
+            String twimlResponse = voiceService.validarEProcessarOpcaoMenu(digits);
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_XML);
             return ResponseEntity.ok().headers(headers).body(twimlResponse);
         } catch (Exception e) {
             logger.error("Erro ao processar escolha: ", e);
-            Say errorSay = new Say.Builder("Desculpe, ocorreu um erro ao processar sua escolha. Tente novamente mais tarde.")
-                    .voice(Say.Voice.POLLY_VITORIA).language(Say.Language.PT_BR).build();
-            VoiceResponse errorResponse = new VoiceResponse.Builder().say(errorSay).build();
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_XML);
-            return ResponseEntity.status(500).headers(headers).body(errorResponse.toXml());
+            return ResponseEntity.status(500).headers(headers).body(e.getMessage().replace("Erro no processamento: ", ""));
         }
     }
 
     @PostMapping(value = "/cpf", produces = MediaType.APPLICATION_XML_VALUE)
-    public String processarCpf(@RequestParam("Digits") String cpfDigits) {
-        logger.info("CPF Recebido para consulta: {}", cpfDigits);
-
-        String mensagem;
-        Say.Voice voz = Say.Voice.POLLY_CAMILA;
-
-        // 1. Validação de formato do CPF
-        if (cpfDigits == null || !cpfDigits.matches("\\d{11}")) {
-            mensagem = "CPF inválido. Por favor, digite os onze números do seu CPF.";
-            logger.warn("Formato de CPF inválido recebido: {}", cpfDigits);
-        } else {
-            // 2. Buscar o usuário no mapa 'activeUsers'
-            Users foundUser = activeUsers.get(cpfDigits);
-
-            if (foundUser != null) {
-                // Usuário encontrado! Use os dados dele.
-                // Supondo que sua classe Users tem getNome() e getSaldo()
-                mensagem = String.format("Olá %s. Seu saldo atual é de %s.", foundUser.getNomeTitular(), foundUser.getSaldo());
-                logger.info("CPF {} encontrado. Usuário: {}. Saldo: {}", cpfDigits, foundUser.getNomeTitular(), foundUser.getSaldo());
-            } else {
-                // Usuário não encontrado no mapa
-                mensagem = "Desculpe, não encontramos informações para o CPF digitado. Por favor, verifique os números e tente novamente.";
-                logger.warn("CPF {} com formato válido, mas não encontrado no mapa de usuários ativos.", cpfDigits);
-            }
-        }
-
-        Say responseSay = new Say.Builder(mensagem)
-                .voice(voz)
-                .language(Say.Language.PT_BR)
-                .build();
-
-        Say goodbyeSay = new Say.Builder("Obrigado por utilizar nossos serviços. Até logo!")
-                .voice(voz)
-                .language(Say.Language.PT_BR)
-                .build();
-
-        VoiceResponse voiceResponse = new VoiceResponse.Builder()
-                .say(responseSay)
-                .say(goodbyeSay)
-                .build();
-
-        return voiceResponse.toXml();
+    public ResponseEntity<String> consultarSaldoPorCpf(@RequestParam("Digits") String cpfDigits) {
+        return ResponseEntity.ok(cpfService.executarConsultaSaldoCpf(cpfDigits));
     }
 }

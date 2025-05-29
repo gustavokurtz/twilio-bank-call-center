@@ -1,56 +1,24 @@
-package dev.gustavo.twilio.service;
+package dev.gustavo.twilio.service.voice;
 
-import com.twilio.Twilio;
 import com.twilio.http.HttpMethod;
-import com.twilio.rest.api.v2010.account.Call;
 import com.twilio.twiml.VoiceResponse;
-import com.twilio.twiml.voice.Say;
 import com.twilio.twiml.voice.Gather;
-import com.twilio.type.PhoneNumber;
-import org.springframework.stereotype.Service;
+import com.twilio.twiml.voice.Say;
+import dev.gustavo.twilio.service.setup.MakePhoneCall;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.net.URI;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
 
 @Service
-public class MakePhoneCall {
-
+public class VoiceService {
     private static final Logger logger = LoggerFactory.getLogger(MakePhoneCall.class);
 
-    // Credenciais
-    private static final String ACCOUNT_SID = System.getenv("TWILIO_ACCOUNT_SID");
-    private static final String AUTH_TOKEN = System.getenv("TWILIO_AUTH_TOKEN");
-    private static final String BASE_URL = "https://c5f6-2804-1cd8-ce23-5e0-7839-6cf1-5a18-989.ngrok-free.app"; // Mantenha seu URL do ngrok
-
-    public String createCall() {
-        try {
-            if (ACCOUNT_SID == null || AUTH_TOKEN == null) {
-                throw new IllegalStateException("Credenciais do Twilio não configuradas");
-            }
-
-            Twilio.init(ACCOUNT_SID, AUTH_TOKEN);
-
-            String from = "+17275948202"; // Seu número Twilio
-            String to = "+5532999165667";   // Número de destino
-
-            Call call = Call.creator(
-                    new PhoneNumber(to),
-                    new PhoneNumber(from),
-                    URI.create(BASE_URL + "/voice") // Endpoint inicial que retorna o menu
-            ).setMethod(HttpMethod.POST).create();
-
-            logger.info("Chamada criada com sucesso. Call SID: {}", call.getSid());
-            return "Chamada criada com sucesso! Call SID: " + call.getSid();
-
-        } catch (Exception e) {
-            logger.error("Erro ao criar chamada: ", e);
-            throw new RuntimeException("Erro ao criar chamada: " + e.getMessage());
-        }
-    }
+    @Value("${api.base.url}")
+    private String BASE_URL;
 
     // Primeira interação - apresenta o menu
-    public String createVoiceMenu() {
+    public String construirMenuPrincipalVoz() {
         try {
             Say menuSay = new Say.Builder("Olá, tudo bem? Digite 1 se quer Falar com o suporte, ou 2 se quer consultar seu saldo.")
                     .voice(Say.Voice.POLLY_VITORIA)
@@ -87,7 +55,7 @@ public class MakePhoneCall {
     }
 
     // Processa a escolha do usuário (1 ou 2)
-    public String processarEscolha(String digits) {
+    public String processarOpcaoSelecionada(String digits) {
         try {
             logger.info("Usuário escolheu: {}", digits);
             VoiceResponse voiceResponse; // A resposta TwiML será construída aqui
@@ -152,6 +120,25 @@ public class MakePhoneCall {
         } catch (Exception e) {
             logger.error("Erro ao processar escolha: ", e);
             throw new RuntimeException("Erro ao processar escolha: " + e.getMessage());
+        }
+    }
+
+
+
+    public String validarEProcessarOpcaoMenu(String digits){
+        try {
+            logger.info("Recebida escolha do usuário: {}", digits);
+            if (digits == null || digits.trim().isEmpty()) {
+                digits = "fallback";
+            }
+            return processarOpcaoSelecionada(digits);
+        } catch (Exception e) {
+            logger.error("Erro ao processar escolha: ", e);
+            Say errorSay = new Say.Builder("Desculpe, ocorreu um erro ao processar sua escolha. Tente novamente mais tarde.")
+                    .voice(Say.Voice.POLLY_VITORIA).language(Say.Language.PT_BR).build();
+            VoiceResponse errorResponse = new VoiceResponse.Builder().say(errorSay).build();
+
+            throw new RuntimeException("Erro no processamento: " + errorResponse.toXml());
         }
     }
 

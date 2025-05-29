@@ -9,6 +9,7 @@ public class Users {
     public Users(String cpf, String nomeTitular, String saldo) {
         this.nomeTitular = nomeTitular;
         this.saldo = saldo;
+        this.cpf = cpf;
     }
 
     public String getCpf() {
